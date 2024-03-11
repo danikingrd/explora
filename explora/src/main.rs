@@ -1,5 +1,7 @@
+use explora::window::Window;
+
 fn main() {
     common_log::init();
-
-    tracing::info!("Hello World!");
+    let mut window = Window::new();
+    window.run();
 }

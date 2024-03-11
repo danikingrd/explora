@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 common_log = { package = "explora-common-log", path = "../common/log"}
 tracing.workspace = true
+winit = "0.29.14"
