@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [ "common", "explora","server", "server-cli"]
+default-members = ["explora"]
+
+[workspace.dependencies]
+tracing = "0.1.40"
+
+
