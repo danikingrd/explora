@@ -1,2 +1,2 @@
-pub mod renderer;
+pub mod render;
 pub mod window;

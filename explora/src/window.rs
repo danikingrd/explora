@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use winit::{
-    event::{Event, WindowEvent},
+    event::Event,
     event_loop::{ControlFlow, EventLoop},
     window::{Window as Platform, WindowBuilder},
 };
 
-use crate::renderer::Renderer;
+use crate::render::Renderer;
 
 pub struct Window {
     platform: Arc<Platform>,

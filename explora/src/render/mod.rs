@@ -1,3 +1,5 @@
+pub mod buffer;
+
 use std::sync::Arc;
 
 use common::math::Vec3;
@@ -5,6 +7,10 @@ use pollster::FutureExt;
 use wgpu::{util::DeviceExt, CommandEncoderDescriptor, TextureViewDescriptor};
 use winit::window::Window;
 
+use crate::render::buffer::Buffer;
+
+#[repr(C)]
+#[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]
 pub struct Vertex {
     pos: [f32; 3],
 }
@@ -32,7 +38,8 @@ pub struct Renderer {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
+    vertex_buffer: Buffer<Vertex>,
+    index_buffer: Buffer<u32>,
 }
 
 impl Renderer {
@@ -57,12 +64,11 @@ impl Renderer {
         let config = surface.get_default_config(&adapter, width, height).unwrap();
         surface.configure(&device, &config);
 
-        tracing::info!("Renderer initialized.");
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("../../assets/shaders/terrain.wgsl").into(),
+                include_str!("../../../assets/shaders/terrain.wgsl").into(),
             ),
         });
 
@@ -107,17 +113,19 @@ impl Renderer {
             multiview: None,
         });
 
-        let triangle = [
-            Vertex::new(Vec3::new(0.0, 0.5, 0.0)),
+        let quad = [
+            Vertex::new(Vec3::new(-0.5, 0.5, 0.0)),
             Vertex::new(Vec3::new(-0.5, -0.5, 0.0)),
             Vertex::new(Vec3::new(0.5, -0.5, 0.0)),
+            Vertex::new(Vec3::new(0.5, 0.5, 0.0)),
         ];
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: as_bytes(&triangle),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let indices = [0u32, 1, 2, 2, 3, 0];
+
+        let vertex_buffer = Buffer::new(&device, wgpu::BufferUsages::VERTEX, &quad);
+        let index_buffer = Buffer::new(&device, wgpu::BufferUsages::INDEX, &indices);
+
+        tracing::info!("Renderer initialized.");
 
         Self {
             surface,
@@ -126,6 +134,7 @@ impl Renderer {
             config,
             render_pipeline,
             vertex_buffer,
+            index_buffer,
         }
     }
 
@@ -163,15 +172,12 @@ impl Renderer {
                 occlusion_query_set: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..3, 0..1);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice());
+            render_pass.set_index_buffer(self.index_buffer.slice(), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..6, 0, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
     }
-}
-
-const fn as_bytes<T>(t: &T) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(t as *const T as *const u8, std::mem::size_of::<T>()) }
 }

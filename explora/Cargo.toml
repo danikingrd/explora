@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = {version = "1.14.3", features = ["derive"] }
 common = { package = "explora-common", path = "../common"}
 common_log = { package = "explora-common-log", path = "../common/log"}
 pollster = "0.3.0"
