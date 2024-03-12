@@ -2,12 +2,37 @@ pub mod buffer;
 
 use std::sync::Arc;
 
-use common::math::Vec3;
+use common::math::{Mat4f, Vec3};
 use pollster::FutureExt;
-use wgpu::{util::DeviceExt, CommandEncoderDescriptor, TextureViewDescriptor};
+use wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
 use winit::window::Window;
 
-use crate::render::buffer::Buffer;
+use crate::{render::buffer::Buffer, scene::Scene};
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Uniforms {
+    proj: [[f32; 4]; 4],
+    view: [[f32; 4]; 4],
+}
+
+impl Default for Uniforms {
+    fn default() -> Self {
+        Self {
+            proj: Mat4f::identity().into_col_arrays(),
+            view: Mat4f::identity().into_col_arrays(),
+        }
+    }
+}
+
+impl Uniforms {
+    pub fn new(proj: Mat4f, view: Mat4f) -> Self {
+        Self {
+            proj: proj.into_col_arrays(),
+            view: view.into_col_arrays(),
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]
@@ -40,6 +65,8 @@ pub struct Renderer {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: Buffer<Vertex>,
     index_buffer: Buffer<u32>,
+    uniforms_buffer: Buffer<Uniforms>,
+    common_bg: wgpu::BindGroup,
 }
 
 impl Renderer {
@@ -64,7 +91,6 @@ impl Renderer {
         let config = surface.get_default_config(&adapter, width, height).unwrap();
         surface.configure(&device, &config);
 
-
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(
@@ -72,9 +98,38 @@ impl Renderer {
             ),
         });
 
+        let uniforms_buffer = Buffer::new(
+            &device,
+            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            &[Uniforms::default()],
+        );
+
+        let common_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Common Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let common_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Common Bind Group"),
+            layout: &common_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniforms_buffer.as_entire_binding(),
+            }],
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&common_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -135,6 +190,8 @@ impl Renderer {
             render_pipeline,
             vertex_buffer,
             index_buffer,
+            uniforms_buffer,
+            common_bg: common_bind_group,
         }
     }
 
@@ -144,7 +201,10 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn render(&mut self) {
+    pub fn render(&mut self, scene: &mut Scene) {
+        let matrices = scene.camera_matrices();
+        self.uniforms_buffer
+            .write(&self.queue, &[Uniforms::new(matrices.proj, matrices.view)]);
         let frame = self.surface.get_current_texture().unwrap();
         let view = frame.texture.create_view(&TextureViewDescriptor::default());
         let mut encoder = self
@@ -172,6 +232,7 @@ impl Renderer {
                 occlusion_query_set: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.common_bg, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice());
             render_pass.set_index_buffer(self.index_buffer.slice(), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..6, 0, 0..1);
