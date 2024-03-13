@@ -9,6 +9,7 @@ edition = "2021"
 bytemuck = {version = "1.14.3", features = ["derive"] }
 common = { package = "explora-common", path = "../common"}
 common_log = { package = "explora-common-log", path = "../common/log"}
+image = "0.25.0"
 png = "0.17.13"
 pollster = "0.3.0"
 tracing.workspace = true

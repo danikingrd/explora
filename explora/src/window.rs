@@ -14,6 +14,7 @@ pub struct Window {
     event_loop: Option<EventLoop<()>>,
     renderer: Renderer,
     scene: Scene,
+    cursor_grabbed: bool,
 }
 
 impl Window {
@@ -41,6 +42,7 @@ impl Window {
             event_loop: Some(event_loop),
             renderer,
             scene,
+            cursor_grabbed: false,
         }
     }
 
@@ -73,6 +75,9 @@ impl Window {
                             ..
                         } => {
                             key_state.update(code, state.is_pressed());
+                            if matches!(code, winit::keyboard::KeyCode::Escape) && state.is_pressed() {
+                                self.grab_cursor(!self.cursor_grabbed);
+                            }
                         }
                         _ => (),
                     }
@@ -107,8 +112,9 @@ impl Window {
         } else {
             winit::window::CursorGrabMode::None
         };
-        if let Err(e) = self.platform.set_cursor_grab(mode) {
-            tracing::warn!("Could not grab cursor in {:?} mode ({})", mode, e);
+        match self.platform.set_cursor_grab(mode) {
+            Ok(_) => self.cursor_grabbed = value,
+            Err(e) => tracing::warn!("Could not grab cursor in {:?} mode ({})", mode, e),
         }
     }
 }

@@ -10,6 +10,8 @@ pub struct PngImage {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    /// Bytes per channel
+    pub channels: u8,
 }
 
 pub type Pixel = [u8; 4];
@@ -19,6 +21,7 @@ pub enum PngImageError {
     IoError(std::io::Error),
     PngDecodingError(png::DecodingError),
     PngEncodingError(png::EncodingError),
+    UnsupportedColorType(png::ColorType),
 }
 
 impl From<std::io::Error> for PngImageError {
@@ -67,33 +70,22 @@ pub fn read<P: AsRef<Path>>(path: P) -> Result<PngImage, PngImageError> {
     let buffered_read = BufReader::new(File::open(path)?);
     let limits = png::Limits::default(); // 64 megabytes
     let mut decoder = png::Decoder::new_with_limits(buffered_read, limits);
-    decoder.set_ignore_text_chunk(true); // We don't care about associated text
+    decoder.set_ignore_text_chunk(true); // We don't care about text
     decoder.set_transformations(png::Transformations::all()); // Apply transformations needed
     let mut reader = decoder.read_info()?;
-    // let (color_type, bits) = reader.output_color_type();
     let mut image = vec![0; reader.output_buffer_size()];
     reader.next_frame(&mut image)?;
+    let info = reader.info();
+
+    let channels = match reader.output_color_type() {
+        (png::ColorType::Rgba, _) => 4,
+        (png::ColorType::Rgb, _) => 3,
+        (color_type, _) => return Err(PngImageError::UnsupportedColorType(color_type)),
+    };
     Ok(PngImage {
-        width: reader.info().width,
-        height: reader.info().height,
+        width: info.width,
+        height: info.height,
         pixels: image,
+        channels,
     })
-}
-
-pub const fn get_pixel(buffer: &[u8], width: u32, x: u32, y: u32) -> Pixel {
-    let index = (y * width + x) as usize * 4;
-    [
-        buffer[index],
-        buffer[index + 1],
-        buffer[index + 2],
-        buffer[index + 3],
-    ]
-}
-
-pub fn set_pixel(buffer: &mut [u8], width: u32, x: u32, y: u32, pixel: Pixel) {
-    let index = (y * width + x) as usize * 4;
-    buffer[index] = pixel[0];
-    buffer[index + 1] = pixel[1];
-    buffer[index + 2] = pixel[2];
-    buffer[index + 3] = pixel[3];
 }
