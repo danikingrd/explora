@@ -1,4 +1,6 @@
 pub mod buffer;
+pub mod png_utils;
+pub mod texture;
 
 use std::sync::Arc;
 
@@ -7,7 +9,10 @@ use pollster::FutureExt;
 use wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
 use winit::window::Window;
 
-use crate::{render::buffer::Buffer, scene::Scene};
+use crate::{
+    render::{buffer::Buffer, texture::Texture},
+    scene::Scene,
+};
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -38,17 +43,20 @@ impl Uniforms {
 #[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]
 pub struct Vertex {
     pos: [f32; 3],
+    texture_coords: [f32; 2],
 }
 
 impl Vertex {
-    pub fn new(v: Vec3<f32>) -> Self {
+    pub fn new(v: Vec3<f32>, uvs: [f32; 2]) -> Self {
         Self {
             pos: v.into_array(),
+            texture_coords: uvs,
         }
     }
 
     pub fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-        const ATTRS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3];
+        const ATTRS: [wgpu::VertexAttribute; 2] =
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
         wgpu::VertexBufferLayout {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &ATTRS,
@@ -70,6 +78,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    #[allow(clippy::vec_init_then_push)]
     pub fn new(platform: &Arc<Window>) -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
         let surface = instance.create_surface(platform.clone()).unwrap();
@@ -103,28 +112,58 @@ impl Renderer {
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             &[Uniforms::default()],
         );
+        let image = png_utils::read("assets/textures/dirt.png").unwrap();
+        let test_texture = Texture::new(&device, &queue, &image);
 
         let common_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Common Bind Group Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                }],
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
             });
         let common_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Common Bind Group"),
             layout: &common_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniforms_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniforms_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&test_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&test_texture.sampler),
+                },
+            ],
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -168,16 +207,68 @@ impl Renderer {
             multiview: None,
         });
 
-        let quad = [
-            Vertex::new(Vec3::new(-0.5, 0.5, 0.0)),
-            Vertex::new(Vec3::new(-0.5, -0.5, 0.0)),
-            Vertex::new(Vec3::new(0.5, -0.5, 0.0)),
-            Vertex::new(Vec3::new(0.5, 0.5, 0.0)),
-        ];
+        let mut cube_mesh = vec![];
 
-        let indices = [0u32, 1, 2, 2, 3, 0];
+        // North
+        cube_mesh.push(Vertex::new(Vec3::zero(), [0.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_x(), [1.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_y(), [1.0, 0.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_y(), [0.0, 0.0]));
+        // South
+        cube_mesh.push(Vertex::new(
+            Vec3::unit_x() + Vec3::unit_y() + Vec3::unit_z(),
+            [1.0, 0.0],
+        ));
+        cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_z(), [0.0, 0.0]));
+        cube_mesh.push(Vertex::new(Vec3::zero() + Vec3::unit_z(), [0.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_y() + Vec3::unit_z(), [1.0, 1.0]));
 
-        let vertex_buffer = Buffer::new(&device, wgpu::BufferUsages::VERTEX, &quad);
+        // East
+        cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_y(), [0.0, 0.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_x(), [0.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_z(), [1.0, 1.0]));
+        cube_mesh.push(Vertex::new(
+            Vec3::unit_x() + Vec3::unit_z() + Vec3::unit_y(),
+            [1.0, 0.0],
+        ));
+
+        // West
+        cube_mesh.push(Vertex::new(Vec3::unit_z() + Vec3::unit_y(), [0.0, 0.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_z(), [0.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::zero(), [1.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_y(), [1.0, 0.0]));
+
+        // Top
+        cube_mesh.push(Vertex::new(Vec3::unit_z() + Vec3::unit_y(), [0.0, 0.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_y(), [0.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_y() + Vec3::unit_x(), [1.0, 1.0]));
+        cube_mesh.push(Vertex::new(
+            Vec3::unit_y() + Vec3::unit_x() + Vec3::unit_z(),
+            [1.0, 0.0],
+        ));
+
+        // Bottom
+        cube_mesh.push(Vertex::new(Vec3::zero(), [0.0, 0.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_z(), [0.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_z() + Vec3::unit_x(), [1.0, 1.0]));
+        cube_mesh.push(Vertex::new(Vec3::unit_x(), [1.0, 0.0]));
+
+        let mut indices = vec![];
+        let mut quad = 0;
+
+        indices.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
+        quad += 4;
+        indices.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
+        quad += 4;
+        indices.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
+        quad += 4;
+        indices.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
+        quad += 4;
+        indices.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
+        quad += 4;
+        indices.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
+
+        let vertex_buffer = Buffer::new(&device, wgpu::BufferUsages::VERTEX, &cube_mesh);
         let index_buffer = Buffer::new(&device, wgpu::BufferUsages::INDEX, &indices);
 
         tracing::info!("Renderer initialized.");
@@ -235,7 +326,7 @@ impl Renderer {
             render_pass.set_bind_group(0, &self.common_bg, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice());
             render_pass.set_index_buffer(self.index_buffer.slice(), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(0..6, 0, 0..1);
+            render_pass.draw_indexed(0..36, 0, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

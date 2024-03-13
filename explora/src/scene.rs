@@ -19,7 +19,7 @@ impl Scene {
     }
 
     pub fn look(&mut self, delta_pitch: f32, delta_yaw: f32) {
-        self.camera.rotate_by(delta_pitch * 0.05, delta_yaw * 0.05);
+        self.camera.rotate_by(delta_pitch * 0.1, delta_yaw * 0.1);
     }
 
     pub fn set_movement_dir(&mut self, dir: Vec3<f32>) {
