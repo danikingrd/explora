@@ -25,7 +25,6 @@ impl Scene {
     pub fn set_movement_dir(&mut self, dir: Vec3<f32>) {
         self.movement_dir = dir;
     }
-
     pub fn resize(&mut self, w: f32, h: f32) {
         self.camera.set_aspect_ratio(w / h);
     }

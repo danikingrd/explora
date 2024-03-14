@@ -69,11 +69,7 @@ impl Atlas {
                 );
                 continue;
             }
-            tracing::info!(
-                "Packing texture... id={} path={}",
-                id,
-                path.display()
-            );
+            tracing::info!("Packing texture... id={} path={}", id, path.display());
 
             let pixel_x = (id % atlas_tile_count) * image.width as usize;
             let pixel_y = (id / atlas_tile_count) * image.height as usize;

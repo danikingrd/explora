@@ -75,7 +75,9 @@ impl Window {
                             ..
                         } => {
                             key_state.update(code, state.is_pressed());
-                            if matches!(code, winit::keyboard::KeyCode::Escape) && state.is_pressed() {
+                            if matches!(code, winit::keyboard::KeyCode::Escape)
+                                && state.is_pressed()
+                            {
                                 self.grab_cursor(!self.cursor_grabbed);
                             }
                         }

@@ -1,7 +1,9 @@
 pub mod atlas;
 pub mod buffer;
+pub mod mesh;
 pub mod png_utils;
 pub mod texture;
+pub mod voxels;
 
 use std::sync::Arc;
 
@@ -11,7 +13,7 @@ use wgpu::{CommandEncoderDescriptor, TextureViewDescriptor};
 use winit::window::Window;
 
 use crate::{
-    render::{atlas::Atlas, buffer::Buffer, texture::Texture},
+    render::{atlas::Atlas, buffer::Buffer, texture::Texture, voxels::Voxels},
     scene::Scene,
 };
 
@@ -75,18 +77,26 @@ impl Vertex {
     }
 }
 
+/// Manages the rendering of the application.
 pub struct Renderer {
+    /// Surface on which the renderer will draw.
     surface: wgpu::Surface<'static>,
+    /// The Logical Device, used for interacting with the GPU.
     device: wgpu::Device,
+    /// A Queue handle. Used for command submission.
     queue: wgpu::Queue,
+    /// The surface configuration details.
     config: wgpu::SurfaceConfiguration,
-    render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: Buffer<Vertex>,
-    index_buffer: Buffer<u32>,
+    /// Uniforms available on the GPU.
     uniforms_buffer: Buffer<Uniforms>,
+    /// Common Bind Groups
     common_bg: wgpu::BindGroup,
+    /// Block texture atlas.
     atlas: Atlas,
+    /// Terrain Depth Texture
     depth_texture: Texture,
+    /// Voxel Renderer
+    voxels: Voxels,
 }
 
 impl Renderer {
@@ -111,13 +121,6 @@ impl Renderer {
         let (width, height) = platform.inner_size().into();
         let config = surface.get_default_config(&adapter, width, height).unwrap();
         surface.configure(&device, &config);
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("../../../assets/shaders/terrain.wgsl").into(),
-            ),
-        });
 
         let uniforms_buffer = Buffer::new(
             &device,
@@ -178,132 +181,7 @@ impl Renderer {
             ],
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[&common_bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::all(),
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-              depth_stencil: Some(wgpu::DepthStencilState {
-                format: texture::Texture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
-
-        let mut cube_mesh = vec![];
-        let mut indices = vec![];
-
-        for z in 0..3 {
-            let offset = Vec3::new(0.0, z as f32, z as f32);
-            // North
-            let north = 1;
-            cube_mesh.push(Vertex::new(Vec3::unit_y() + offset, north));
-            cube_mesh.push(Vertex::new(Vec3::zero() + offset, north));
-            cube_mesh.push(Vertex::new(Vec3::unit_x() + offset, north));
-            cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_y() + offset, north));
-            // South
-            let south = 1;
-            cube_mesh.push(Vertex::new(
-                Vec3::unit_x() + Vec3::unit_y() + Vec3::unit_z() + offset,
-                south,
-            ));
-            cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_z() + offset, south));
-            cube_mesh.push(Vertex::new(Vec3::zero() + Vec3::unit_z() + offset, south));
-            cube_mesh.push(Vertex::new(Vec3::unit_y() + Vec3::unit_z() + offset, south));
-
-            // East
-            let east = 1;
-            cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_y() + offset, east));
-            cube_mesh.push(Vertex::new(Vec3::unit_x() + offset, east));
-            cube_mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_z() + offset, east));
-            cube_mesh.push(Vertex::new(
-                Vec3::unit_x() + Vec3::unit_z() + Vec3::unit_y() + offset,
-                east,
-            ));
-
-            // West
-            let west = 1;
-            cube_mesh.push(Vertex::new(Vec3::unit_z() + Vec3::unit_y() + offset, west));
-            cube_mesh.push(Vertex::new(Vec3::unit_z() + offset, west));
-            cube_mesh.push(Vertex::new(Vec3::zero() + offset, west));
-            cube_mesh.push(Vertex::new(Vec3::unit_y() + offset, west));
-
-            // Top
-            let top = 2;
-            cube_mesh.push(Vertex::new(Vec3::unit_z() + Vec3::unit_y() + offset, top));
-            cube_mesh.push(Vertex::new(Vec3::unit_y() + offset, top));
-            cube_mesh.push(Vertex::new(Vec3::unit_y() + Vec3::unit_x() + offset, top));
-            cube_mesh.push(Vertex::new(
-                Vec3::unit_y() + Vec3::unit_x() + Vec3::unit_z() + offset,
-                top,
-            ));
-
-            // Bottom
-            let bottom = 0;
-            cube_mesh.push(Vertex::new(Vec3::zero() + offset, bottom));
-            cube_mesh.push(Vertex::new(Vec3::unit_z() + offset, bottom));
-            cube_mesh.push(Vertex::new(
-                Vec3::unit_z() + Vec3::unit_x() + offset,
-                bottom,
-            ));
-            cube_mesh.push(Vertex::new(Vec3::unit_x() + offset, bottom));
-
-            let mut indices_temp = vec![];
-            let mut quad = z * 6 * 4;
-
-            indices_temp.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
-            quad += 4;
-            indices_temp.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
-            quad += 4;
-            indices_temp.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
-            quad += 4;
-            indices_temp.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
-            quad += 4;
-            indices_temp.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
-            quad += 4;
-            indices_temp.extend_from_slice(&[quad, quad + 1, quad + 2, quad + 2, quad + 3, quad]);
-
-            indices.extend_from_slice(&indices_temp);
-        }
-
-        let vertex_buffer = Buffer::new(&device, wgpu::BufferUsages::VERTEX, &cube_mesh);
-        let index_buffer = Buffer::new(&device, wgpu::BufferUsages::INDEX, &indices);
-
+        let voxels = Voxels::new(&device, &common_bind_group_layout, &config);
         tracing::info!("Renderer initialized.");
 
         Self {
@@ -311,13 +189,11 @@ impl Renderer {
             device,
             queue,
             config,
-            render_pipeline,
-            vertex_buffer,
-            index_buffer,
             uniforms_buffer,
             common_bg: common_bind_group,
             atlas,
             depth_texture,
+            voxels,
         }
     }
 
@@ -369,16 +245,12 @@ impl Renderer {
                         store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
-                
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.common_bg, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice());
-            render_pass.set_index_buffer(self.index_buffer.slice(), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(0..self.index_buffer.len(), 0, 0..1);
+
+            self.voxels.draw(&mut render_pass, &self.common_bg);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
