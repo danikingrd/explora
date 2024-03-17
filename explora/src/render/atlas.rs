@@ -1,13 +1,70 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
+
+use common::block::BlockId;
 
 use crate::render::png_utils;
 
 use super::png_utils::PngImage;
 
+pub struct BlockTexture {
+    // 0 - North
+    // 1 - South
+    // 2 - East
+    // 3 - West
+    // 4 - Top
+    // 5 - Bottom
+    pub values: [u32; 6],
+}
+
 pub struct Atlas {
     // TODO: Temporal.
     pub image: PngImage,
     pub tile_size: usize,
+    textures: HashMap<String, u32>,
+}
+
+impl Atlas {
+
+    pub fn block_texture(&self, id: BlockId) -> BlockTexture {
+        // TODO: Temporaal
+        match id {
+            BlockId::Dirt => {
+                let id = self.get("dirt");
+                BlockTexture {
+                    values: [id, id, id, id, id, id],
+                }
+            },
+            BlockId::Grass => {
+                let top = self.get("grass_top");
+                let side = self.get("grass_side");
+                let bottom = self.get("dirt");
+                BlockTexture {
+                    values: [side, side, side, side, top, bottom],
+                }
+            },
+            BlockId::Stone => {
+                let id = self.get("stone");
+                BlockTexture {
+                    values: [id, id, id, id, id, id],
+                }
+            }
+            _ => {
+                let id = self.get("default");
+                BlockTexture {
+                    values: [id, id, id, id, id, id],
+                }
+            }
+        }        
+    }
+    pub fn get(&self, name: &str) -> u32 {
+        match self.textures.get(name) {
+            Some(id) => *id,
+            None => {
+                tracing::warn!("Texture not found: {}", name);
+                0
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -36,9 +93,10 @@ impl Atlas {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
+        tracing::info!(?files);
         // the number of tiles per row/column
-        let atlas_tile_count = (files.len() as f32).sqrt().ceil() as usize;
-        // tracing::info!(?atlas_tile_count);
+        let atlas_tile_count = ((files.len() + 1) as f32).sqrt().ceil() as usize;
+        tracing::info!(?atlas_tile_count);
 
         // We need to know what the size of each individual tile is.
         // We can get this from the first texture, assuming they are all the same size.
@@ -47,9 +105,18 @@ impl Atlas {
         let atlas_height = first_image.height as usize * atlas_tile_count;
         let mut pixels = vec![0; atlas_width * atlas_height * 4];
 
-        tracing::info!(?atlas_tile_count, ?atlas_width, ?atlas_height, ?first_image.width, ?first_image.height);
+        draw_default_texture(
+            first_image.width,
+            first_image.height,
+            atlas_width,
+            &mut pixels,
+        );
 
-        let mut id = 0;
+        tracing::info!(?atlas_tile_count, ?atlas_width, ?atlas_height, ?first_image.width, ?first_image.height);
+        let mut textures = HashMap::new();
+        textures.insert("default".to_owned(), 0);
+
+        let mut id = 1;
         for path in &files {
             if path.is_dir() {
                 continue; // skip just for now
@@ -83,6 +150,8 @@ impl Atlas {
                         .copy_from_slice(&image.pixels[index..index + 4]);
                 }
             }
+            let name = path.file_stem().unwrap().to_str().unwrap().to_owned();
+            textures.insert(name, id as u32);
             id += 1;
         }
 
@@ -102,6 +171,21 @@ impl Atlas {
                 channels: 4,
             },
             tile_size: first_image.width as usize,
+            textures,
         })
+    }
+}
+
+fn draw_default_texture(tile_width: u32, tile_height: u32, atlas_width: usize, atlas: &mut [u8]) {
+    tracing::info!("Drawing default texture {}x{}", tile_width, tile_height);
+    for y in 0..tile_height as usize {
+        for x in 0..tile_width as usize {
+            let atlas_index = ((y) * atlas_width + x) * 4;
+            if (x / 8 + y / 8) % 2 == 0 {
+                atlas[atlas_index..atlas_index + 4].copy_from_slice(&[0, 0, 0, 255]);
+            } else {
+                atlas[atlas_index..atlas_index + 4].copy_from_slice(&[255, 255, 255, 255]);
+            }
+        }
     }
 }

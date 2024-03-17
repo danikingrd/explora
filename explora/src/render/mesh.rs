@@ -1,12 +1,11 @@
 use common::{
-    block::BlockId,
     chunk::Chunk,
     math::{Vec2, Vec3},
 };
 
-use super::Vertex;
+use super::{atlas::Atlas, Vertex};
 
-pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>) {
+pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>, atlas: &Atlas) {
     for x in 0..Chunk::SIZE.x {
         for y in 0..Chunk::SIZE.y {
             for z in 0..Chunk::SIZE.z {
@@ -17,14 +16,10 @@ pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>) 
                     y as f32,
                     pos.y as f32 * Chunk::SIZE.z as f32 + z as f32,
                 );
-
+                let texture = atlas.block_texture(block);
                 // North
                 if Chunk::out_of_bounds(origin + Vec3::unit_z()) {
-                    let north = match block {
-                        BlockId::Dirt => 0,
-                        BlockId::Grass => 1,
-                        _ => continue,
-                    };
+                    let north = texture.values[0];
                     mesh.push(Vertex::new(
                         Vec3::unit_x() + Vec3::unit_y() + Vec3::unit_z() + offset,
                         north,
@@ -36,13 +31,7 @@ pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>) 
 
                 // South
                 if Chunk::out_of_bounds(origin - Vec3::unit_z()) {
-                    // TODO: temporal hack to assign the correct texture to the grass block
-                    let south = match block {
-                        BlockId::Dirt => 0,
-                        BlockId::Grass => 1,
-                        _ => continue,
-                    };
-
+                    let south = texture.values[1];
                     mesh.push(Vertex::new(Vec3::unit_y() + offset, south));
                     mesh.push(Vertex::new(Vec3::zero() + offset, south));
                     mesh.push(Vertex::new(Vec3::unit_x() + offset, south));
@@ -51,11 +40,7 @@ pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>) 
 
                 // East
                 if Chunk::out_of_bounds(origin + Vec3::unit_x()) {
-                    let east = match block {
-                        BlockId::Dirt => 0,
-                        BlockId::Grass => 1,
-                        _ => continue,
-                    };
+                    let east =  texture.values[2];
                     mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_y() + offset, east));
                     mesh.push(Vertex::new(Vec3::unit_x() + offset, east));
                     mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_z() + offset, east));
@@ -66,11 +51,7 @@ pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>) 
                 }
                 // West
                 if Chunk::out_of_bounds(origin - Vec3::unit_x()) {
-                    let west = match block {
-                        BlockId::Dirt => 0,
-                        BlockId::Grass => 1,
-                        _ => continue,
-                    };
+                    let west = texture.values[3];
                     mesh.push(Vertex::new(Vec3::unit_z() + Vec3::unit_y() + offset, west));
                     mesh.push(Vertex::new(Vec3::unit_z() + offset, west));
                     mesh.push(Vertex::new(Vec3::zero() + offset, west));
@@ -79,11 +60,7 @@ pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>) 
 
                 if Chunk::out_of_bounds(origin + Vec3::unit_y()) {
                     // Top
-                    let top = match block {
-                        BlockId::Dirt => 0,
-                        BlockId::Grass => 2,
-                        _ => continue,
-                    };
+                    let top = texture.values[4];
                     mesh.push(Vertex::new(Vec3::unit_z() + Vec3::unit_y() + offset, top));
                     mesh.push(Vertex::new(Vec3::unit_y() + offset, top));
                     mesh.push(Vertex::new(Vec3::unit_y() + Vec3::unit_x() + offset, top));
@@ -95,7 +72,7 @@ pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>) 
 
                 if Chunk::out_of_bounds(origin - Vec3::unit_y()) {
                     // Bottom
-                    let bottom = 0;
+                    let bottom = texture.values[5];
                     mesh.push(Vertex::new(Vec3::zero() + offset, bottom));
                     mesh.push(Vertex::new(Vec3::unit_z() + offset, bottom));
                     mesh.push(Vertex::new(

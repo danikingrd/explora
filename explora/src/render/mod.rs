@@ -181,7 +181,7 @@ impl Renderer {
             ],
         });
 
-        let voxels = Voxels::new(&device, &common_bind_group_layout, &config);
+        let voxels = Voxels::new(&device, &common_bind_group_layout, &config, &atlas);
         tracing::info!("Renderer initialized.");
 
         Self {

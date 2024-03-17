@@ -14,7 +14,8 @@ impl Chunk {
                 for z in 0..Self::SIZE.z {
                     let index = Self::index(Vec3::new(x as i32, y as i32, z as i32)).unwrap();
                     blocks[index] = match y {
-                        0..=254 => BlockId::Dirt,
+                        0..=32 => BlockId::Stone,
+                        33..=254 => BlockId::Dirt,
                         255 => BlockId::Grass,
                         _ => BlockId::Air,
                     };

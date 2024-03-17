@@ -1,6 +1,6 @@
 use common::{chunk::Chunk, math::Vec2};
 
-use super::{buffer::Buffer, mesh, texture::Texture, Vertex};
+use super::{atlas::Atlas, buffer::Buffer, mesh, texture::Texture, Vertex};
 
 pub struct Voxels {
     /// Terrain render pipeline
@@ -16,6 +16,7 @@ impl Voxels {
         device: &wgpu::Device,
         common_bg_layout: &wgpu::BindGroupLayout,
         config: &wgpu::SurfaceConfiguration,
+        atlas: &Atlas,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
@@ -84,7 +85,7 @@ impl Voxels {
 
         for (pos, chunk) in chunk_generation {
             let mut chunk_mesh = vec![];
-            mesh::create_chunk_mesh(&chunk, &mut chunk_mesh, pos);
+            mesh::create_chunk_mesh(&chunk, &mut chunk_mesh, pos, atlas);
             chunk_meshes.push(Buffer::new(device, wgpu::BufferUsages::VERTEX, &chunk_mesh));
             vertex_count += chunk_mesh.len() as u32;
         }
@@ -110,10 +111,9 @@ impl Voxels {
         frame.set_pipeline(&self.render_pipeline);
         frame.set_bind_group(0, common_bg, &[]);
         frame.set_index_buffer(self.index_buffer.slice(), wgpu::IndexFormat::Uint32);
-
         for chunk_mesh in &self.chunk_meshes {
             frame.set_vertex_buffer(0, chunk_mesh.slice());
-            frame.draw_indexed(0..self.index_buffer.len(), 0, 0..1);
+            frame.draw_indexed(0..chunk_mesh.len() / 4 * 6, 0, 0..1);
         }
     }
 }
