@@ -4,4 +4,6 @@ Explora is a multiplayer voxel game featuring procedurally generated infinite wo
 
 Currently just an experiment.
 
+WIP!!
+
 ![](./assets/screenshots/showcase.png)
