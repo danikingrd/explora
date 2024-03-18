@@ -24,7 +24,6 @@ pub struct Atlas {
 }
 
 impl Atlas {
-
     pub fn block_texture(&self, id: BlockId) -> BlockTexture {
         // TODO: Temporaal
         match id {
@@ -33,7 +32,7 @@ impl Atlas {
                 BlockTexture {
                     values: [id, id, id, id, id, id],
                 }
-            },
+            }
             BlockId::Grass => {
                 let top = self.get("grass_top");
                 let side = self.get("grass_side");
@@ -41,7 +40,7 @@ impl Atlas {
                 BlockTexture {
                     values: [side, side, side, side, top, bottom],
                 }
-            },
+            }
             BlockId::Stone => {
                 let id = self.get("stone");
                 BlockTexture {
@@ -54,7 +53,7 @@ impl Atlas {
                     values: [id, id, id, id, id, id],
                 }
             }
-        }        
+        }
     }
     pub fn get(&self, name: &str) -> u32 {
         match self.textures.get(name) {

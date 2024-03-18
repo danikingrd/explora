@@ -40,7 +40,7 @@ pub fn create_chunk_mesh(chunk: &Chunk, mesh: &mut Vec<Vertex>, pos: Vec2<i32>, 
 
                 // East
                 if Chunk::out_of_bounds(origin + Vec3::unit_x()) {
-                    let east =  texture.values[2];
+                    let east = texture.values[2];
                     mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_y() + offset, east));
                     mesh.push(Vertex::new(Vec3::unit_x() + offset, east));
                     mesh.push(Vertex::new(Vec3::unit_x() + Vec3::unit_z() + offset, east));
